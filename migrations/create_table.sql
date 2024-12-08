@@ -27,22 +27,18 @@ CREATE INDEX idx_datasets_processed_at ON datasets(processed_at);
 -- Queries table (updated)
 CREATE TABLE IF NOT EXISTS queries (
     id SERIAL PRIMARY KEY,
-    dataset_id INTEGER NOT NULL REFERENCES datasets(id),
+    dataset VARCHAR(255) NOT NULL,
+    language VARCHAR(10),
     query_text TEXT NOT NULL,
     publisher VARCHAR(255) NOT NULL,
-    language VARCHAR(10) DEFAULT 'en',
-    progress BIGINT DEFAULT 0,
+    total_published INTEGER DEFAULT 0,
+    total_processed INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_dataset
-        FOREIGN KEY(dataset_id)
-        REFERENCES datasets(id)
-        ON DELETE RESTRICT
 );
 
 -- Updated indexes for queries
-CREATE INDEX idx_queries_dataset_id ON queries(dataset_id);
 CREATE INDEX idx_queries_publisher ON queries(publisher);
-CREATE INDEX idx_queries_language ON queries(language);
+CREATE INDEX idx_queries_dataset_language ON queries(dataset, language);
 CREATE INDEX idx_queries_publisher_created ON queries(publisher, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS query_results (

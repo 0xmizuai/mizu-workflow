@@ -46,15 +46,6 @@ def save_query(
     return cur.fetchone()[0]
 
 
-def update_query_progress(cur, query_id: int, progress: int) -> None:
-    cur.execute(
-        """UPDATE queries 
-           SET progress = %s 
-           WHERE id = %s""",
-        (progress, query_id)
-    )
-
-
 def save_query_result(
     cur,
     query_id: int,
@@ -64,27 +55,18 @@ def save_query_result(
     crawled_at: Optional[datetime] = None,
     processed_at: Optional[datetime] = None
 ) -> int:
-    """
-    Save a query result to the database.
-    
-    Args:
-        cur: Database cursor
-        query_id: ID of the parent query
-        url: URL of the content
-        warc_id: WARC record ID
-        text: Extracted text content (optional)
-        crawled_at: When the content was crawled (optional)
-        processed_at: When the content was processed (optional)
-    
-    Returns:
-        int: ID of the newly created query result
-    """
     cur.execute(
-        """INSERT INTO query_results 
-           (query_id, url, warc_id, text, crawled_at, processed_at) 
-           VALUES (%s, %s, %s, %s, %s, %s) 
-           RETURNING id""",
-        (query_id, url, warc_id, text, crawled_at, processed_at)
+        """WITH inserted_result AS (
+               INSERT INTO query_results 
+               (query_id, url, warc_id, text, crawled_at, processed_at) 
+               VALUES (%s, %s, %s, %s, %s, %s) 
+               RETURNING id
+           )
+           UPDATE queries 
+           SET total_processed = total_processed + 1 
+           WHERE id = %s;
+           SELECT id FROM inserted_result;""",
+        (query_id, url, warc_id, text, crawled_at, processed_at, query_id)
     )
     return cur.fetchone()[0]
 
@@ -111,3 +93,107 @@ def save_data_record(
          num_of_records, decompressed_byte_size, processed_at)
     )
     return cur.fetchone()[0]
+
+def get_query_results(cur, query_id: int, page: int = 1, page_size: int = 1000) -> tuple[list, int]:
+    # Get total count
+    cur.execute(
+        "SELECT COUNT(*) FROM query_results WHERE query_id = %s",
+        (query_id,)
+    )
+    total = cur.fetchone()[0]
+    
+    # Get paginated results
+    offset = (page - 1) * page_size
+    cur.execute(
+        """SELECT query_id, url, warc_id, text, crawled_at, processed_at 
+           FROM query_results 
+           WHERE query_id = %s 
+           ORDER BY id 
+           LIMIT %s OFFSET %s""",
+        (query_id, page_size, offset)
+    )
+    results = cur.fetchall()
+    
+    return results, total
+
+def get_query_status(cur, query_id: int) -> dict:
+    # 1. Get query details
+    cur.execute(
+        """
+        SELECT 
+            id,
+            dataset,
+            progress,
+            created_at,
+            language
+        FROM queries
+        WHERE id = %s
+        """,
+        (query_id,)
+    )
+    result = cur.fetchone()
+    if not result:
+        return None
+
+    # 2. Get total dataset size for this dataset+language combination
+    cur.execute(
+        """
+        SELECT COUNT(*) 
+        FROM datasets
+        WHERE name = %s AND language = %s
+        """,
+        (result[1], result[4])  # dataset_id and language
+    )
+    dataset_size = cur.fetchone()[0]
+
+    # 3. Get total results for this specific query
+    cur.execute(
+        """
+        SELECT COUNT(*) 
+        FROM query_results
+        WHERE query_id = %s
+        """,
+        (query_id,)
+    )
+    query_results_count = cur.fetchone()[0]
+
+    return {
+        "query_id": result[0],
+        "dataset_id": result[1],
+        "processed_records": result[2],
+        "created_at": result[3],
+        "language": result[4],
+        "dataset_size": dataset_size,
+        "query_results_count": query_results_count
+    }
+
+
+def get_query_detail(cur, query_id: int) -> dict:
+    cur.execute(
+        """
+        SELECT 
+            id,
+            dataset_id,
+            query_text,
+            publisher,
+            language,
+            progress,
+            created_at
+        FROM queries
+        WHERE id = %s
+        """,
+        (query_id,)
+    )
+    result = cur.fetchone()
+    if not result:
+        return None
+        
+    return {
+        "id": result[0],
+        "dataset_id": result[1],
+        "query_text": result[2],
+        "publisher": result[3],
+        "language": result[4],
+        "progress": result[5],
+        "created_at": result[6]
+    }
