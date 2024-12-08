@@ -5,28 +5,26 @@ from fastapi import HTTPException
 import os
 from typing import Optional
 
-class Connection:
-    def __init__(self):
-        self.POSTGRES_URL = os.environ["POSTGRES_URL"]
 
-    @contextmanager
-    def get_pg_connection(self):
-        conn = None
-        cur = None
-        try:
-            conn = psycopg2.connect(self.POSTGRES_URL)
-            cur = conn.cursor()
-            yield cur
-            conn.commit()
-        except psycopg2.Error as e:
-            if conn:
-                conn.rollback()
-            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-        finally:
-            if cur:
-                cur.close()
-            if conn:
-                conn.close()
+@contextmanager
+def get_pg_connection():
+    conn = None
+    cur = None
+    try:
+        conn = psycopg2.connect(os.environ["POSTGRES_URL"])
+        cur = conn.cursor()
+        yield cur
+        conn.commit()
+    except psycopg2.Error as e:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
 
 def save_query(
     cur, 

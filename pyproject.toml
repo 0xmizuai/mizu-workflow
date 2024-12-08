@@ -15,6 +15,7 @@ psycopg2-binary = "^2.9.10"
 pyjwt = "^2.10.1"
 
 
+aiohttp = "^3.11.10"
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
 black = "^24.10.0"

@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS queries (
     publisher VARCHAR(255) NOT NULL,
     total_published INTEGER DEFAULT 0,
     total_processed INTEGER DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'publishing' CHECK (status IN ('publishing', 'processing', 'processed')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 );
 
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS queries (
 CREATE INDEX idx_queries_publisher ON queries(publisher);
 CREATE INDEX idx_queries_dataset_language ON queries(dataset, language);
 CREATE INDEX idx_queries_publisher_created ON queries(publisher, created_at DESC);
+CREATE INDEX idx_queries_status ON queries(status);
 
 CREATE TABLE IF NOT EXISTS query_results (
     id SERIAL PRIMARY KEY,

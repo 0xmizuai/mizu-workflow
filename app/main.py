@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Annotated
-from app.db.database import Connection, save_query, save_query_result, get_query_results, update_query_progress
+from app.db.database import get_pg_connection, save_query, save_query_result, get_query_results
 from app.auth import get_user, verify_internal_service
 from contextlib import asynccontextmanager
 import uvicorn
@@ -9,7 +9,6 @@ from app.models.query import PaginatedQueryResults, QueryResult, QueryDetail
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.db = Connection()
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -37,7 +36,7 @@ async def submit_query(
     query: str, 
     publisher: Annotated[str, Depends(get_user)]
 ):
-    with app.state.db.get_pg_connection() as cur:
+    with get_pg_connection() as cur:
         query_id = save_query(cur, dataset, query, publisher)
         return {
             "query_id": query_id,
@@ -55,7 +54,7 @@ async def save_query_result_callback(
     _: Annotated[bool, Depends(verify_internal_service)]
 ):
     try:
-        with app.state.db.get_pg_connection() as cur:
+        with get_pg_connection() as cur:
             result_id = save_query_result(
                 cur,
                 result.query_id,
@@ -79,7 +78,7 @@ async def get_query_results(
     page: int = Query(default=1, ge=1)
 ):
     try:
-        with app.state.db.get_pg_connection() as cur:
+        with get_pg_connection() as cur:
             # Verify query belongs to publisher
             cur.execute(
                 "SELECT publisher FROM queries WHERE id = %s",
@@ -121,7 +120,7 @@ async def get_query_detail(
     publisher: Annotated[str, Depends(get_user)]
 ):
     try:
-        with app.state.db.get_pg_connection() as cur:
+        with get_pg_connection() as cur:
             query = get_query_detail(cur, query_id)
             
             if not query:
