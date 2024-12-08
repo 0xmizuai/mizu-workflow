@@ -11,6 +11,8 @@ fastapi = "^0.115.6"
 uvicorn = "^0.32.1"
 pydantic = "^2.10.3"
 pydantic-settings = "^2.6.1"
+psycopg2-binary = "^2.9.10"
+pyjwt = "^2.10.1"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -22,3 +24,7 @@ isort = "^5.13.2"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+start = "app.server:start"
+start-dev = "app.server:start_dev"
