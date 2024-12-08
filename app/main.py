@@ -1,13 +1,12 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Annotated
-from app.db.query import Connection, save_query
-import jwt
-import os
-from base64 import b64decode
+from app.db.database import Connection, save_query, save_query_result
+from app.auth import get_user, verify_internal_service
 from contextlib import asynccontextmanager
 import uvicorn
+
+from app.models.query import QueryResult
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -25,25 +24,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-security = HTTPBearer()
-# Get the public key from environment variable
-PUBLIC_KEY = b64decode(os.getenv('JWT_PUBLIC_KEY', ''))
-
-async def get_publisher(credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)]) -> str:
-    try:
-        token = credentials.credentials
-        payload = jwt.decode(
-            token,
-            PUBLIC_KEY,
-            algorithms=["EdDSA"]
-        )
-        # Assuming the publisher is stored in the 'sub' claim
-        if 'sub' not in payload:
-            raise HTTPException(status_code=401, detail="Publisher not found in token")
-        return payload['sub']
-    except jwt.InvalidTokenError as e:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
-
 @app.get("/")
 async def root():
     return {"status": "ok"}
@@ -56,7 +36,7 @@ async def health_check():
 async def submit_query(
     dataset: str, 
     query: str, 
-    publisher: Annotated[str, Depends(get_publisher)]
+    publisher: Annotated[str, Depends(get_user)]
 ):
     with app.state.db.get_pg_connection() as cur:
         query_id = save_query(cur, dataset, query, publisher)
@@ -68,6 +48,30 @@ async def submit_query(
             "progress": "pending",
             "status": "saved"
         }
+
+
+@app.post("/save_query_result")
+async def save_query_result_callback(
+    result: QueryResult,
+    _: Annotated[bool, Depends(verify_internal_service)]
+):
+    try:
+        with app.state.db.get_pg_connection() as cur:
+            result_id = save_query_result(
+                cur,
+                result.query_id,
+                result.url,
+                result.warc_id,
+                result.text,
+                result.crawled_at,
+                result.processed_at
+            )
+            return {
+                "result_id": result_id,
+                "status": "saved"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 def start():
     """Start production server"""
