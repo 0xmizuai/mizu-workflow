@@ -27,19 +27,19 @@ def get_pg_connection():
 
 
 def save_query(
-    cur, 
-    dataset_id: int, 
-    query: str, 
-    publisher: str, 
-    language: str = 'en', 
-    progress: int = 0
+    cur,
+    dataset_id: int,
+    query: str,
+    publisher: str,
+    language: str = "en",
+    progress: int = 0,
 ) -> int:
     cur.execute(
         """INSERT INTO queries 
            (dataset_id, query_text, publisher, language, progress) 
            VALUES (%s, %s, %s, %s, %s) 
            RETURNING id""",
-        (dataset_id, query, publisher, language, progress)
+        (dataset_id, query, publisher, language, progress),
     )
     return cur.fetchone()[0]
 
@@ -51,7 +51,7 @@ def save_query_result(
     warc_id: str,
     text: Optional[str] = None,
     crawled_at: Optional[datetime] = None,
-    processed_at: Optional[datetime] = None
+    processed_at: Optional[datetime] = None,
 ) -> int:
     cur.execute(
         """WITH inserted_result AS (
@@ -64,7 +64,7 @@ def save_query_result(
            SET total_processed = total_processed + 1 
            WHERE id = %s;
            SELECT id FROM inserted_result;""",
-        (query_id, url, warc_id, text, crawled_at, processed_at, query_id)
+        (query_id, url, warc_id, text, crawled_at, processed_at, query_id),
     )
     return cur.fetchone()[0]
 
@@ -76,10 +76,10 @@ def save_data_record(
     r2_key: str,
     byte_size: int,
     md5: str,
-    language: str = 'en',
+    language: str = "en",
     num_of_records: int = None,
     decompressed_byte_size: int = None,
-    processed_at: datetime = None
+    processed_at: datetime = None,
 ) -> int:
     cur.execute(
         """INSERT INTO datasets 
@@ -87,19 +87,28 @@ def save_data_record(
             num_of_records, decompressed_byte_size, processed_at) 
            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) 
            RETURNING id""",
-        (name, language, data_type, r2_key, md5, byte_size,
-         num_of_records, decompressed_byte_size, processed_at)
+        (
+            name,
+            language,
+            data_type,
+            r2_key,
+            md5,
+            byte_size,
+            num_of_records,
+            decompressed_byte_size,
+            processed_at,
+        ),
     )
     return cur.fetchone()[0]
 
-def get_query_results(cur, query_id: int, page: int = 1, page_size: int = 1000) -> tuple[list, int]:
+
+def get_query_results(
+    cur, query_id: int, page: int = 1, page_size: int = 1000
+) -> tuple[list, int]:
     # Get total count
-    cur.execute(
-        "SELECT COUNT(*) FROM query_results WHERE query_id = %s",
-        (query_id,)
-    )
+    cur.execute("SELECT COUNT(*) FROM query_results WHERE query_id = %s", (query_id,))
     total = cur.fetchone()[0]
-    
+
     # Get paginated results
     offset = (page - 1) * page_size
     cur.execute(
@@ -108,11 +117,12 @@ def get_query_results(cur, query_id: int, page: int = 1, page_size: int = 1000) 
            WHERE query_id = %s 
            ORDER BY id 
            LIMIT %s OFFSET %s""",
-        (query_id, page_size, offset)
+        (query_id, page_size, offset),
     )
     results = cur.fetchall()
-    
+
     return results, total
+
 
 def get_query_status(cur, query_id: int) -> dict:
     # 1. Get query details
@@ -127,7 +137,7 @@ def get_query_status(cur, query_id: int) -> dict:
         FROM queries
         WHERE id = %s
         """,
-        (query_id,)
+        (query_id,),
     )
     result = cur.fetchone()
     if not result:
@@ -140,7 +150,7 @@ def get_query_status(cur, query_id: int) -> dict:
         FROM datasets
         WHERE name = %s AND language = %s
         """,
-        (result[1], result[4])  # dataset_id and language
+        (result[1], result[4]),  # dataset_id and language
     )
     dataset_size = cur.fetchone()[0]
 
@@ -151,7 +161,7 @@ def get_query_status(cur, query_id: int) -> dict:
         FROM query_results
         WHERE query_id = %s
         """,
-        (query_id,)
+        (query_id,),
     )
     query_results_count = cur.fetchone()[0]
 
@@ -162,7 +172,7 @@ def get_query_status(cur, query_id: int) -> dict:
         "created_at": result[3],
         "language": result[4],
         "dataset_size": dataset_size,
-        "query_results_count": query_results_count
+        "query_results_count": query_results_count,
     }
 
 
@@ -180,12 +190,12 @@ def get_query_detail(cur, query_id: int) -> dict:
         FROM queries
         WHERE id = %s
         """,
-        (query_id,)
+        (query_id,),
     )
     result = cur.fetchone()
     if not result:
         return None
-        
+
     return {
         "id": result[0],
         "dataset_id": result[1],
@@ -193,5 +203,5 @@ def get_query_detail(cur, query_id: int) -> dict:
         "publisher": result[3],
         "language": result[4],
         "progress": result[5],
-        "created_at": result[6]
+        "created_at": result[6],
     }
