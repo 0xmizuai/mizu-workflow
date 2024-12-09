@@ -9,20 +9,17 @@ CREATE TABLE IF NOT EXISTS datasets (
     num_of_records INTEGER,
     decompressed_byte_size BIGINT,
     byte_size BIGINT NOT NULL,
-    processed_at TIMESTAMP WITH TIME ZONE,
+    source TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(name, language)
+    UNIQUE(md5)
 );
 
 -- Indexes for datasets
 CREATE INDEX idx_datasets_name ON datasets(name);
 CREATE INDEX idx_datasets_language ON datasets(language);
-CREATE INDEX idx_datasets_data_type ON datasets(data_type);
 CREATE INDEX idx_datasets_name_language ON datasets(name, language);
-
--- Additional indexes for new fields
 CREATE INDEX idx_datasets_md5 ON datasets(md5);
-CREATE INDEX idx_datasets_processed_at ON datasets(processed_at);
+CREATE INDEX idx_datasets_source ON datasets(source);
 
 -- Queries table (updated)
 CREATE TABLE IF NOT EXISTS queries (
