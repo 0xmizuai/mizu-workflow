@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 async def get_object_metadata(s3_client, obj: dict) -> dict:
     """Get metadata for a single object"""
     try:
-        head = await s3_client.head_object(Bucket=DATASET_BUCKET, Key=obj["Key"])
+#       head = await s3_client.head_object(Bucket=DATASET_BUCKET, Key=obj["Key"])
 
         # Parse key components
         key_parts = obj["Key"].split("/")
@@ -37,17 +37,17 @@ async def get_object_metadata(s3_client, obj: dict) -> dict:
         else:
             raise Exception(f"Invalid key format: {obj['Key']}")
 
-        metadata = head.get("Metadata", {})
+#         metadata = head.get("Metadata", {})
         return {
             "name": dataset,
             "language": language,
             "data_type": data_type,
             "r2_key": obj["Key"],
             "md5": md5,
-            "num_of_records": int(metadata.get("num_of_records", 0)),
-            "decompressed_byte_size": int(metadata.get("decompressed_bytesize", 0)),
-            "byte_size": int(obj["Size"]),
-            "source": metadata.get("source", ""),
+            "num_of_records": 0,
+            "decompressed_byte_size": 0,
+            "byte_size": 0,
+            "source": "",
         }
     except Exception as e:
         logger.error(f"Error getting metadata for {obj['Key']}: {str(e)}")
@@ -59,7 +59,6 @@ async def list_r2_objects(prefix: str = "") -> AsyncGenerator[list[dict], None]:
     logger.info(f"Starting to list objects with prefix: {prefix}")
     processed = 0
     errors = 0
-    batch = []
 
     session = aioboto3.Session()
     async with session.client(
@@ -74,45 +73,23 @@ async def list_r2_objects(prefix: str = "") -> AsyncGenerator[list[dict], None]:
             async for page in paginator.paginate(
                 Bucket=DATASET_BUCKET,
                 Prefix=prefix,
-                PaginationConfig={"PageSize": 100000},
             ):
                 if "Contents" not in page:
                     logger.warning(f"No contents found for prefix: {prefix}")
                     continue
 
-                logger.info(f"Received page with {len(page['Contents'])} objects")
-
-                # Add all objects from this page to the batch
-                batch.extend(page["Contents"])
-                logger.info(f"Current batch size: {len(batch)}")
-
-                # Process when batch reaches threshold
-                while len(batch) >= 5000:
-                    # Take first 5000 objects
-                    current_batch = batch[:5000]
-                    batch = batch[5000:]  # Keep remaining objects for next batch
-
-                    # Process batch asynchronously
-                    tasks = [get_object_metadata(s3_client, obj) for obj in current_batch]
-                    results = await asyncio.gather(*tasks)
-
-                    # Filter out None results (failed requests)
-                    valid_results = [r for r in results if r is not None]
-                    processed += len(valid_results)
-                    errors += len(results) - len(valid_results)
-
-                    logger.info(
-                        f"Processed batch of {len(valid_results)} objects. Total: {processed}, Errors: {errors}"
-                    )
-                    yield valid_results
-
-            # Process remaining items
-            if batch:
-                tasks = [get_object_metadata(s3_client, obj) for obj in batch]
+                # Process the entire page directly
+                tasks = [get_object_metadata(s3_client, obj) for obj in page["Contents"]]
                 results = await asyncio.gather(*tasks)
+
+                # Filter out None results (failed requests)
                 valid_results = [r for r in results if r is not None]
                 processed += len(valid_results)
                 errors += len(results) - len(valid_results)
+
+                logger.info(
+                    f"Processed batch of {len(valid_results)} objects. Total: {processed}, Errors: {errors}"
+                )
                 yield valid_results
 
             logger.info(
