@@ -45,7 +45,7 @@ async def get_object_metadata(s3_client, obj: dict) -> dict:
             "r2_key": obj["Key"],
             "md5": md5,
             "num_of_records": int(metadata.get("num_of_records", 0)),
-            "decompressed_bytesize": int(metadata.get("decompressed_bytesize", 0)),
+            "decompressed_byte_size": int(metadata.get("decompressed_bytesize", 0)),
             "byte_size": int(obj["Size"]),
             "source": metadata.get("source", ""),
         }
@@ -71,31 +71,40 @@ async def list_r2_objects(prefix: str = "") -> AsyncGenerator[list[dict], None]:
     ) as s3_client:
         try:
             paginator = s3_client.get_paginator("list_objects_v2")
-            async for page in paginator.paginate(Bucket=DATASET_BUCKET, Prefix=prefix):
+            async for page in paginator.paginate(
+                Bucket=DATASET_BUCKET,
+                Prefix=prefix,
+                PaginationConfig={"PageSize": 100000},
+            ):
                 if "Contents" not in page:
                     logger.warning(f"No contents found for prefix: {prefix}")
                     continue
 
-                for obj in page["Contents"]:
-                    batch.append(obj)
+                logger.info(f"Received page with {len(page['Contents'])} objects")
 
-                    if len(batch) >= 1000:
-                        # Process batch asynchronously
-                        tasks = [get_object_metadata(s3_client, obj) for obj in batch]
-                        results = await asyncio.gather(*tasks)
+                # Add all objects from this page to the batch
+                batch.extend(page["Contents"])
+                logger.info(f"Current batch size: {len(batch)}")
 
-                        # Filter out None results (failed requests)
-                        valid_results = [r for r in results if r is not None]
-                        processed += len(valid_results)
-                        errors += len(results) - len(valid_results)
+                # Process when batch reaches threshold
+                while len(batch) >= 5000:
+                    # Take first 5000 objects
+                    current_batch = batch[:5000]
+                    batch = batch[5000:]  # Keep remaining objects for next batch
 
-                        logger.info(
-                            f"Processed batch of {len(valid_results)} objects. Total: {processed}, Errors: {errors}"
-                        )
-                        yield valid_results
-                        batch = []
+                    # Process batch asynchronously
+                    tasks = [get_object_metadata(s3_client, obj) for obj in current_batch]
+                    results = await asyncio.gather(*tasks)
 
-                    break
+                    # Filter out None results (failed requests)
+                    valid_results = [r for r in results if r is not None]
+                    processed += len(valid_results)
+                    errors += len(results) - len(valid_results)
+
+                    logger.info(
+                        f"Processed batch of {len(valid_results)} objects. Total: {processed}, Errors: {errors}"
+                    )
+                    yield valid_results
 
             # Process remaining items
             if batch:
@@ -121,15 +130,14 @@ def insert_batch_to_db(objects: list[dict]):
     """
     try:
         logger.info(f"Inserting batch of {len(objects)} records to database")
-        with get_pg_connection() as conn:
-            cursor = conn.cursor()
+        with get_pg_connection() as cursor:
             cursor.executemany(
                 """
                 INSERT INTO datasets (
                     name, language, data_type, r2_key, md5,
-                    num_of_records, decompressed_bytesize, byte_size, source
+                    num_of_records, decompressed_byte_size, byte_size, source
                 ) VALUES (
-                    $1, $2, $3, $4, $5, $6, $7, $8, $9
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s
                 ) ON CONFLICT (md5) DO NOTHING
                 """,
                 [
@@ -140,14 +148,13 @@ def insert_batch_to_db(objects: list[dict]):
                         obj["r2_key"],
                         obj["md5"],
                         obj["num_of_records"],
-                        obj["decompressed_bytesize"],
+                        obj["decompressed_byte_size"],
                         obj["byte_size"],
                         obj["source"],
                     )
                     for obj in objects
                 ],
             )
-            conn.commit()  # Add commit to save changes
         logger.info("Successfully inserted batch to database")
     except Exception as e:
         logger.error(f"Error inserting batch into database: {str(e)}")
