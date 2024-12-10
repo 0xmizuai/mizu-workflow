@@ -163,11 +163,11 @@ def get_last_processed_key() -> str:
     try:
         with get_db_session() as session:
             result = session.execute(
-                text("SELECT r2_key FROM datasets ORDER BY id DESC LIMIT 1")
+                text("SELECT name, data_type, language, md5 FROM datasets ORDER BY id DESC LIMIT 1")
             ).fetchone()
 
             if result:
-                last_key = result[0]
+                last_key = f"{result[0]}/{result[1]}/{result[2]}/{result[3].zz}"
                 logger.info(f"Resuming from last processed key: {last_key}")
                 return last_key
 
