@@ -5,6 +5,7 @@ import aioboto3
 from botocore.config import Config
 from typing import AsyncGenerator
 from sqlalchemy.sql import text
+from datetime import date
 
 from app.db.database import get_db_session
 
@@ -43,11 +44,10 @@ async def get_object_metadata(s3_client, obj: dict) -> dict:
             "name": dataset,
             "language": language,
             "data_type": data_type,
-            "r2_key": obj["Key"],
             "md5": md5,
             "num_of_records": 0,
             "decompressed_byte_size": 0,
-            "byte_size": 0,
+            "byte_size": obj["Size"],
             "source": "",
         }
     except Exception as e:
@@ -118,10 +118,10 @@ def insert_batch_to_db(objects: list[dict]):
                 text(
                     """
                 INSERT INTO datasets (
-                    name, language, data_type, r2_key, md5,
+                    name, language, data_type, md5,
                     num_of_records, decompressed_byte_size, byte_size, source
                 ) VALUES (
-                    :name, :language, :data_type, :r2_key, :md5,
+                    :name, :language, :data_type, :md5,
                     :num_of_records, :decompressed_byte_size, :byte_size, :source
                 ) ON CONFLICT (md5) DO NOTHING
                 """
@@ -178,6 +178,69 @@ def get_last_processed_key() -> str:
         return ""
 
 
+def update_dataset_stats():
+    """
+    Calculate and store dataset statistics in the dataset_stats table
+    """
+    logger.info("Starting dataset statistics calculation")
+    try:
+        with get_db_session() as session:
+            # Get statistics grouped by language and r2_prefix
+            stats = session.execute(
+                text(
+                    """
+                    WITH prefix_extract AS (
+                        SELECT 
+                            language,
+                            data_type,
+                            name,
+                            md5,
+                        FROM datasets
+                    )
+                    SELECT 
+                        language,
+                        data_type,
+                        name,
+                        COUNT(*) as total_objects,
+                    FROM prefix_extract
+                    GROUP BY name, language, data_type
+                """
+                )
+            ).fetchall()
+
+            # Insert or update statistics
+            current_date = date.today()
+            for stat in stats:
+                session.execute(
+                    text(
+                        """
+                        INSERT INTO dataset_stats 
+                            (language, data_type, name, total_objects)
+                        VALUES 
+                            (:language, :data_type, :name, :total_objects)
+                        ON CONFLICT (language, data_type, name) 
+                        DO UPDATE SET
+                            total_objects = EXCLUDED.total_objects,
+                            created_at = CURRENT_TIMESTAMP
+                    """
+                    ),
+                    {
+                        "language": stat.language,
+                        "data_type": stat.data_type,
+                        "name": stat.name,
+                        "total_objects": stat.total_objects,
+                    },
+                )
+
+            session.commit()
+            logger.info(
+                f"Successfully updated dataset statistics for {len(stats)} combinations"
+            )
+
+    except Exception as e:
+        logger.error(f"Error updating dataset statistics: {str(e)}")
+
+
 def start():
     import asyncio
     import argparse
@@ -186,7 +249,14 @@ def start():
     parser.add_argument(
         "--resume", action="store_true", help="Resume from last processed item"
     )
+    parser.add_argument(
+        "--stats", action="store_true", help="Update dataset statistics"
+    )
     args = parser.parse_args()
+
+    if args.stats:
+        update_dataset_stats()
+        return
 
     offset = get_last_processed_key() if args.resume else ""
     asyncio.run(load_dataset("CC-MAIN-2024-46", "text", offset))

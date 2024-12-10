@@ -60,3 +60,20 @@ CREATE INDEX idx_query_results_query_id ON query_results(query_id);
 CREATE INDEX idx_query_results_job_id ON query_results(job_id);
 CREATE INDEX idx_query_results_status ON query_results(status);
 CREATE INDEX idx_query_results_created_at ON query_results(created_at);
+
+-- Dataset statistics table
+CREATE TABLE IF NOT EXISTS dataset_stats (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    language VARCHAR(10) NOT NULL,
+    data_type VARCHAR(50) NOT NULL,
+    total_objects INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(language, data_type, name)
+);
+
+-- Indexes for dataset_stats
+CREATE INDEX idx_dataset_stats_name ON dataset_stats(name);
+CREATE INDEX idx_dataset_stats_language ON dataset_stats(language);
+CREATE INDEX idx_dataset_stats_name_language ON dataset_stats(name, language);
+CREATE INDEX idx_dataset_stats_created_at ON dataset_stats(created_at);
