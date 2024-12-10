@@ -8,7 +8,6 @@ from pydantic import BaseModel, ConfigDict, Field
 class ClassifyResult(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    warc_id: str = Field(alias="warcId")
     uri: str
     text: str
 
@@ -37,7 +36,7 @@ class PublishBatchClassifyJobRequest(BaseModel):
     data: list[BatchClassifyContext]
 
 
-class JobResult(BaseModel):
+class QueryJobResult(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     job_id: str = Field(alias="jobId")

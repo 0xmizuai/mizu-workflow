@@ -27,7 +27,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-start = "app.server:start"
-start-dev = "app.server:start_dev"
+start = "app.main:start"
+start-dev = "app.main:start_dev"
 
 load-dataset = "scripts.load_dataset:start"
