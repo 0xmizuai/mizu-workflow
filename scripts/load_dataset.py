@@ -167,7 +167,7 @@ def get_last_processed_key() -> str:
             ).fetchone()
 
             if result:
-                last_key = f"{result[0]}/{result[1]}/{result[2]}/{result[3].zz}"
+                last_key = f"{result[0]}/{result[1]}/{result[2]}/{result[3]}.zz"
                 logger.info(f"Resuming from last processed key: {last_key}")
                 return last_key
 
