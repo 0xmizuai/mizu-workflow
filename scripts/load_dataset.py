@@ -54,7 +54,7 @@ async def get_object_metadata(s3_client, obj: dict) -> dict:
         return None
 
 
-async def list_r2_objects(prefix: str = "") -> AsyncGenerator[list[dict], None]:
+async def list_r2_objects(prefix: str = "", offset: int = 0) -> AsyncGenerator[list[dict], None]:
     """Lists objects from R2 bucket and gets their metadata in batches"""
     logger.info(f"Starting to list objects with prefix: {prefix}")
     processed = 0
@@ -73,6 +73,7 @@ async def list_r2_objects(prefix: str = "") -> AsyncGenerator[list[dict], None]:
             async for page in paginator.paginate(
                 Bucket=DATASET_BUCKET,
                 Prefix=prefix,
+                StartAfter=offset,
             ):
                 if "Contents" not in page:
                     logger.warning(f"No contents found for prefix: {prefix}")
@@ -137,14 +138,14 @@ def insert_batch_to_db(objects: list[dict]):
         logger.error(f"Error inserting batch into database: {str(e)}")
 
 
-async def load_dataset(dataset: str, data_type: str):
+async def load_dataset(dataset: str, data_type: str, offset: int = 0):
     try:
         prefix = f"{dataset}/{data_type}"
         total_processed = 0
 
         logger.info(f"Starting dataset load for {prefix}")
 
-        async for batch_metadata in list_r2_objects(prefix):
+        async for batch_metadata in list_r2_objects(prefix, offset):
             if batch_metadata:
                 insert_batch_to_db(batch_metadata)
                 total_processed += len(batch_metadata)
@@ -161,5 +162,10 @@ async def load_dataset(dataset: str, data_type: str):
 
 def start():
     import asyncio
-
-    asyncio.run(load_dataset("CC-MAIN-2024-46", "text"))
+    import argparse
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--offset', type=int, default=0)
+    args = parser.parse_args()
+    
+    asyncio.run(load_dataset("CC-MAIN-2024-46", "text", args.offset))

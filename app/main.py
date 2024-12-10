@@ -11,8 +11,7 @@ from app.db.database import (
 from app.auth import get_user, verify_internal_service
 from contextlib import asynccontextmanager
 import uvicorn
-from app.models.query import PaginatedQueryResults, QueryResult, QueryDetail
-from app.models.service import JobResult
+from app.models.service import PaginatedQueryResults, QueryResult, QueryDetail, JobResult
 
 
 @asynccontextmanager

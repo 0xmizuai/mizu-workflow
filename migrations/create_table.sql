@@ -29,7 +29,6 @@ CREATE TABLE IF NOT EXISTS queries (
     language VARCHAR(10),
     query_text TEXT NOT NULL,
     publisher VARCHAR(255) NOT NULL,
-    total_published INTEGER DEFAULT 0,
     status VARCHAR(20) DEFAULT 'publishing' CHECK (status IN ('publishing', 'published', 'processed')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
