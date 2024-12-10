@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.query_result import QueryResult
 from app.models.service import PublishBatchClassifyJobRequest, BatchClassifyContext
 from app.models.dataset import Dataset
-from app.models.service import Query
+from app.models.query import Query
 from datetime import datetime
 
 BATCH_SIZE = 1000
