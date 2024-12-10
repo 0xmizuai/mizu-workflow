@@ -47,7 +47,7 @@ async def get_object_metadata(s3_client, obj: dict) -> dict:
             "md5": md5,
             "num_of_records": 0,
             "decompressed_byte_size": 0,
-            "byte_size": obj["Size"],
+            "byte_size": int(obj["Size"], 0),
             "source": "",
         }
     except Exception as e:
