@@ -41,24 +41,60 @@ class JobResult(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     job_id: str = Field(alias="jobId")
-    error_result: Optional[ErrorResult] = None
-    classify_result: list[ClassifyResult] = []
+    error_result: Optional[ErrorResult] = Field(alias="errorResult", default=None)
+    classify_result: list[ClassifyResult] = Field(alias="classifyResult", default=[])
 
 
 class QueryResult(BaseModel):
-    query_id: int
-    results: list[ClassifyResult]
+    model_config = ConfigDict(populate_by_name=True)
+
+    results: list[ClassifyResult] = Field(alias="results", default=[])
 
 
 class PaginatedQueryResults(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     results: List[QueryResult]
     total: int
     page: int
-    page_size: int
+    page_size: int = Field(alias="pageSize")
     has_more: bool
 
 
-class QueryDetail(BaseModel):
+class QueryContext(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    query_text: str = Field(alias="queryText")
+    model: str
+
+
+class RegisterQueryRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     dataset: str
-    query: str
-    created_at: datetime
+    language: str
+    query_text: str = Field(alias="queryText")
+    model: str
+
+
+class RegisterQueryResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    query_id: int = Field(alias="queryId")
+
+
+class QueryDetails(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    query_id: int = Field(alias="queryId")
+    dataset: str = Field(alias="dataset")
+    query_text: str = Field(alias="queryText")
+    model: str = Field(alias="model")
+    language: str = Field(alias="language")
+    created_at: datetime = Field(alias="createdAt")
+
+
+class QueryList(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    queries: list[QueryDetails] = Field(alias="queries", default=[])

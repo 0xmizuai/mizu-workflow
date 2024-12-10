@@ -14,6 +14,7 @@ class QueryResult(Base):
     job_id = Column(String(255), nullable=False)
     data_id = Column(Integer, nullable=False)
     result = Column(JSON)
+    status = Column(String(20), default="pending", nullable=False)
     finished_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 

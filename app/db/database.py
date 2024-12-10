@@ -26,19 +26,21 @@ def get_db_session():
         session.close()
 
 
-def save_query(
+def save_new_query(
     session: Session,
-    dataset_id: int,
-    query: str,
-    publisher: str,
+    dataset: str,
     language: str,
-    status: str = "publishing",
+    query_text: str,
+    model: str,
+    owner: str,
+    status: str = "pending",
 ) -> int:
     query_obj = Query(
-        dataset_id=dataset_id,
-        query_text=query,
-        publisher=publisher,
+        dataset=dataset,
         language=language,
+        query_text=query_text,
+        model=model,
+        owner=owner,
         status=status,
     )
     session.add(query_obj)
@@ -165,17 +167,9 @@ def get_query_status(session: Session, query_id: int) -> dict:
     }
 
 
-def get_query_detail(session: Session, query_id: int) -> dict:
-    query = session.query(Query).filter(Query.id == query_id).first()
-    if not query:
-        return None
+def get_query_detail(session: Session, query_id: int) -> Query:
+    return session.query(Query).filter(Query.id == query_id).first()
 
-    return {
-        "id": query.id,
-        "dataset_id": query.dataset_id,
-        "query_text": query.query_text,
-        "publisher": query.publisher,
-        "language": query.language,
-        "progress": query.progress,
-        "created_at": query.created_at,
-    }
+
+def get_owned_queries(session: Session, owner: str) -> list[dict]:
+    return session.query(Query).filter(Query.publisher == owner).all()

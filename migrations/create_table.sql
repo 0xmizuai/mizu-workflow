@@ -28,15 +28,16 @@ CREATE TABLE IF NOT EXISTS queries (
     dataset VARCHAR(255) NOT NULL,
     language VARCHAR(10),
     query_text TEXT NOT NULL,
-    publisher VARCHAR(255) NOT NULL,
-    status VARCHAR(20) DEFAULT 'publishing' CHECK (status IN ('publishing', 'published', 'processed')),
+    model VARCHAR(255) NOT NULL,
+    owner VARCHAR(255) NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'publishing', 'published', 'processed')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Updated indexes for queries
-CREATE INDEX idx_queries_publisher ON queries(publisher);
+CREATE INDEX idx_queries_owner ON queries(owner);
 CREATE INDEX idx_queries_dataset_language ON queries(dataset, language);
-CREATE INDEX idx_queries_publisher_created ON queries(publisher, created_at DESC);
+CREATE INDEX idx_queries_owner_created ON queries(owner, created_at DESC);
 CREATE INDEX idx_queries_status ON queries(status);
 
 CREATE TABLE IF NOT EXISTS query_results (

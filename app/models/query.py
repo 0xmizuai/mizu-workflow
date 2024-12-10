@@ -8,9 +8,11 @@ class Query(Base):
     __tablename__ = "queries"
 
     id = Column(Integer, primary_key=True)
-    query = Column(Text, nullable=False)
+    query_text = Column(Text, nullable=False)
     dataset = Column(String(255), nullable=False)
     language = Column(String(10), nullable=False)
+    model = Column(String(255), nullable=False)
+    owner = Column(String(255), nullable=False)
     status = Column(String(50), default="pending")
     created_at = Column(
         DateTime(timezone=True), default=lambda: datetime.now(datetime.UTC)
@@ -22,4 +24,4 @@ class Query(Base):
     )
 
     def __repr__(self):
-        return f"<Query(id={self.id}, query='{self.query[:50]}...', dataset='{self.dataset}')>"
+        return f"<Query(id={self.id}, query_text='{self.query_text[:50]}...', dataset='{self.dataset}'), language='{self.language}', model='{self.model}', owner='{self.owner}')>"
