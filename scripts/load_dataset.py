@@ -4,8 +4,9 @@ import asyncio
 import aioboto3
 from botocore.config import Config
 from typing import AsyncGenerator
+from sqlalchemy.sql import text
 
-from app.db.database import get_pg_connection
+from app.db.database import get_db_session
 
 R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID")
 R2_ACCESS_KEY = os.getenv("R2_ACCESS_KEY")
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 async def get_object_metadata(s3_client, obj: dict) -> dict:
     """Get metadata for a single object"""
     try:
-#       head = await s3_client.head_object(Bucket=DATASET_BUCKET, Key=obj["Key"])
+        #       head = await s3_client.head_object(Bucket=DATASET_BUCKET, Key=obj["Key"])
 
         # Parse key components
         key_parts = obj["Key"].split("/")
@@ -37,7 +38,7 @@ async def get_object_metadata(s3_client, obj: dict) -> dict:
         else:
             raise Exception(f"Invalid key format: {obj['Key']}")
 
-#         metadata = head.get("Metadata", {})
+        #         metadata = head.get("Metadata", {})
         return {
             "name": dataset,
             "language": language,
@@ -54,7 +55,9 @@ async def get_object_metadata(s3_client, obj: dict) -> dict:
         return None
 
 
-async def list_r2_objects(prefix: str = "", offset: int = 0) -> AsyncGenerator[list[dict], None]:
+async def list_r2_objects(
+    prefix: str = "", offset: str = ""
+) -> AsyncGenerator[list[dict], None]:
     """Lists objects from R2 bucket and gets their metadata in batches"""
     logger.info(f"Starting to list objects with prefix: {prefix}")
     processed = 0
@@ -80,7 +83,9 @@ async def list_r2_objects(prefix: str = "", offset: int = 0) -> AsyncGenerator[l
                     continue
 
                 # Process the entire page directly
-                tasks = [get_object_metadata(s3_client, obj) for obj in page["Contents"]]
+                tasks = [
+                    get_object_metadata(s3_client, obj) for obj in page["Contents"]
+                ]
                 results = await asyncio.gather(*tasks)
 
                 # Filter out None results (failed requests)
@@ -108,37 +113,30 @@ def insert_batch_to_db(objects: list[dict]):
     """
     try:
         logger.info(f"Inserting batch of {len(objects)} records to database")
-        with get_pg_connection() as cursor:
-            cursor.executemany(
-                """
+        with get_db_session() as session:
+            session.execute(
+                text(
+                    """
                 INSERT INTO datasets (
                     name, language, data_type, r2_key, md5,
                     num_of_records, decompressed_byte_size, byte_size, source
                 ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    :name, :language, :data_type, :r2_key, :md5,
+                    :num_of_records, :decompressed_byte_size, :byte_size, :source
                 ) ON CONFLICT (md5) DO NOTHING
-                """,
-                [
-                    (
-                        obj["name"],
-                        obj["language"],
-                        obj["data_type"],
-                        obj["r2_key"],
-                        obj["md5"],
-                        obj["num_of_records"],
-                        obj["decompressed_byte_size"],
-                        obj["byte_size"],
-                        obj["source"],
-                    )
-                    for obj in objects
-                ],
+                """
+                ),
+                objects,
             )
         logger.info("Successfully inserted batch to database")
     except Exception as e:
         logger.error(f"Error inserting batch into database: {str(e)}")
 
 
-async def load_dataset(dataset: str, data_type: str, offset: int = 0):
+async def load_dataset(dataset: str, data_type: str, offset: str = ""):
+    logger.info(
+        f"Loading dataset {dataset} with data type {data_type} with offset {offset}"
+    )
     try:
         prefix = f"{dataset}/{data_type}"
         total_processed = 0
@@ -160,12 +158,35 @@ async def load_dataset(dataset: str, data_type: str, offset: int = 0):
         raise
 
 
+def get_last_processed_key() -> str:
+    """Get the r2_key of the last processed item from the database"""
+    try:
+        with get_db_session() as session:
+            result = session.execute(
+                text("SELECT r2_key FROM datasets ORDER BY id DESC LIMIT 1")
+            ).fetchone()
+
+            if result:
+                last_key = result[0]
+                logger.info(f"Resuming from last processed key: {last_key}")
+                return last_key
+
+            logger.info("No previous progress found, starting from beginning")
+            return ""
+    except Exception as e:
+        logger.error(f"Error getting last processed key: {str(e)}")
+        return ""
+
+
 def start():
     import asyncio
     import argparse
-    
+
     parser = argparse.ArgumentParser()
-    parser.add_argument('--offset', type=int, default=0)
+    parser.add_argument(
+        "--resume", action="store_true", help="Resume from last processed item"
+    )
     args = parser.parse_args()
-    
-    asyncio.run(load_dataset("CC-MAIN-2024-46", "text", args.offset))
+
+    offset = get_last_processed_key() if args.resume else ""
+    asyncio.run(load_dataset("CC-MAIN-2024-46", "text", offset))
