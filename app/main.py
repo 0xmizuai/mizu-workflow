@@ -18,7 +18,7 @@ from app.models.service import (
     QueryDetails,
     QueryList,
     QueryResult,
-    JobResult,
+    QueryJobResult,
     RegisterQueryRequest,
     RegisterQueryResponse,
 )
@@ -73,7 +73,7 @@ async def register_query(
 @app.post("/save_query_result")
 @error_handler
 async def save_query_result_callback(
-    result: JobResult, _: Annotated[bool, Depends(verify_internal_service)]
+    result: QueryJobResult, _: Annotated[bool, Depends(verify_internal_service)]
 ):
     with get_db_session() as session:
         save_query_result(session, result)
