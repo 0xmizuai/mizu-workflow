@@ -241,6 +241,86 @@ def update_dataset_stats():
         logger.error(f"Error updating dataset statistics: {str(e)}")
 
 
+def sample_datasets(source_db_url: str, sample_size: int = 100000):
+    """
+    Sample records from source database's datasets table and insert them into the current database.
+    
+    Args:
+        source_db_url (str): The source database connection URL
+        sample_size (int): Number of records to sample per dataset/language combination
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    logger.info(f"Starting dataset sampling. Sample size per combination: {sample_size}")
+    
+    try:
+        # Create source database connection
+        source_engine = create_engine(source_db_url)
+        SourceSession = sessionmaker(bind=source_engine)
+        source_session = SourceSession()
+
+        # Get distinct dataset/language combinations
+        combinations = source_session.execute(
+            text("""
+                SELECT DISTINCT name, language, data_type 
+                FROM datasets
+            """)
+        ).fetchall()
+
+        total_sampled = 0
+        
+        for combo in combinations:
+            try:
+                # Sample records for each combination
+                samples = source_session.execute(
+                    text(f"""
+                        SELECT 
+                            name, language, data_type, md5,
+                            num_of_records, decompressed_byte_size, byte_size, source
+                        FROM datasets 
+                        WHERE name = :name 
+                            AND language = :language 
+                            AND data_type = :data_type
+                        ORDER BY RANDOM() 
+                        LIMIT :sample_size
+                    """),
+                    {
+                        "name": combo.name,
+                        "language": combo.language,
+                        "data_type": combo.data_type,
+                        "sample_size": sample_size
+                    }
+                ).fetchall()
+
+                # Convert to list of dictionaries
+                records = [dict(row) for row in samples]
+
+                if records:
+                    batch_size = 1000
+                    for i in range(0, len(records), batch_size):
+                        batch = records[i:i + batch_size]
+                        insert_batch_to_db(batch)
+                        total_sampled += len(batch)
+                        logger.info(
+                            f"Sampled {total_sampled} records for {combo.name}/{combo.language}/{combo.data_type}"
+                        )
+
+            except Exception as e:
+                logger.error(
+                    f"Error sampling {combo.name}/{combo.language}/{combo.data_type}: {str(e)}"
+                )
+                continue
+
+        logger.info(f"Completed sampling. Total records sampled: {total_sampled}")
+
+    except Exception as e:
+        logger.error(f"Error during sampling process: {str(e)}")
+    finally:
+        source_session.close()
+        source_engine.dispose()
+
+
 def start():
     import asyncio
     import argparse
@@ -252,10 +332,26 @@ def start():
     parser.add_argument(
         "--stats", action="store_true", help="Update dataset statistics"
     )
+    parser.add_argument(
+        "--sample", action="store_true", help="Sample data from source database"
+    )
+    parser.add_argument(
+        "--source-db", type=str, help="Source database URL for sampling"
+    )
+    parser.add_argument(
+        "--sample-size", type=int, default=100000, help="Number of records to sample per combination"
+    )
     args = parser.parse_args()
 
     if args.stats:
         update_dataset_stats()
+        return
+
+    if args.sample:
+        if not args.source_db:
+            logger.error("Source database URL is required for sampling")
+            return
+        sample_datasets(args.source_db, args.sample_size)
         return
 
     offset = get_last_processed_key() if args.resume else ""
