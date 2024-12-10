@@ -2,15 +2,17 @@ from fastapi import FastAPI, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Annotated
 from app.db.database import (
-    get_pg_connection,
+    get_db_session,
     save_query,
     save_query_result,
     get_query_results,
+    get_query_detail,
 )
 from app.auth import get_user, verify_internal_service
 from contextlib import asynccontextmanager
 import uvicorn
 from app.models.query import PaginatedQueryResults, QueryResult, QueryDetail
+from app.models.service import JobResult
 
 
 @asynccontextmanager
@@ -40,12 +42,14 @@ async def health_check():
     return {"status": "ok"}
 
 
-@app.get("/submit_query")
-async def submit_query(
+@app.get("/register_query")
+async def register_query(
     dataset: str, query: str, publisher: Annotated[str, Depends(get_user)]
 ):
-    with get_pg_connection() as cur:
-        query_id = save_query(cur, dataset, query, publisher)
+    with get_db_session() as session:
+        query_id = save_query(
+            session, dataset_id=dataset, query=query, publisher=publisher
+        )
         return {
             "query_id": query_id,
             "dataset": dataset,
@@ -58,57 +62,46 @@ async def submit_query(
 
 @app.post("/save_query_result")
 async def save_query_result_callback(
-    result: QueryResult, _: Annotated[bool, Depends(verify_internal_service)]
+    result: JobResult, _: Annotated[bool, Depends(verify_internal_service)]
 ):
     try:
-        with get_pg_connection() as cur:
-            result_id = save_query_result(
-                cur,
-                result.query_id,
-                result.url,
-                result.warc_id,
-                result.text,
-                result.crawled_at,
-                result.processed_at,
-            )
+        with get_db_session() as session:
+            result_id = save_query_result(session, result)
             return {"result_id": result_id, "status": "saved"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/queries/{query_id}/results", response_model=PaginatedQueryResults)
-async def get_query_results(
+async def get_query_results_endpoint(
     query_id: int,
     publisher: Annotated[str, Depends(get_user)],
     page: int = Query(default=1, ge=1),
 ):
     try:
-        with get_pg_connection() as cur:
+        with get_db_session() as session:
             # Verify query belongs to publisher
-            cur.execute("SELECT publisher FROM queries WHERE id = %s", (query_id,))
-            query = cur.fetchone()
-            if not query or query[0] != publisher:
+            query = (
+                session.query(Query)
+                .filter(Query.id == query_id, Query.publisher == publisher)
+                .first()
+            )
+
+            if not query:
                 raise HTTPException(status_code=404, detail="Query not found")
 
             # Get paginated results
-            results, total = get_query_results(cur, query_id)
-
-            # Convert to Pydantic models
-            query_results = [
-                QueryResult(
-                    query_id=query_id,
-                    url=r[1],
-                    warc_id=r[2],
-                    text=r[3],
-                    crawled_at=r[4],
-                    processed_at=r[5],
-                )
-                for r in results
-            ]
+            results, total = get_query_results(session, query_id, page)
 
             page_size = 1000
             return PaginatedQueryResults(
-                results=query_results,
+                results=[
+                    QueryResult(
+                        query_id=query_id,
+                        results=r.results,
+                    )
+                    for r in results
+                ],
                 total=total,
                 page=page,
                 page_size=page_size,
@@ -119,10 +112,12 @@ async def get_query_results(
 
 
 @app.get("/queries/{query_id}", response_model=QueryDetail)
-async def get_query_detail(query_id: int, publisher: Annotated[str, Depends(get_user)]):
+async def get_query_detail_endpoint(
+    query_id: int, publisher: Annotated[str, Depends(get_user)]
+):
     try:
-        with get_pg_connection() as cur:
-            query = get_query_detail(cur, query_id)
+        with get_db_session() as session:
+            query = get_query_detail(session, query_id)
 
             if not query:
                 raise HTTPException(status_code=404, detail="Query not found")
