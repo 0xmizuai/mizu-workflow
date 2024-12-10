@@ -12,6 +12,7 @@ from app.models.service import JobResult
 engine = create_engine(os.environ["POSTGRES_URL"])
 SessionLocal = sessionmaker(bind=engine)
 
+
 @contextmanager
 def get_db_session():
     session = SessionLocal()
@@ -23,6 +24,7 @@ def get_db_session():
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     finally:
         session.close()
+
 
 def save_query(
     session: Session,
@@ -37,11 +39,12 @@ def save_query(
         query_text=query,
         publisher=publisher,
         language=language,
-        status=status
+        status=status,
     )
     session.add(query_obj)
     session.flush()  # To get the ID
     return query_obj.id
+
 
 def add_query_result(
     session: Session,
@@ -65,9 +68,9 @@ def save_query_result(
     result: JobResult,
 ) -> int:
     # Try to find existing QueryResult
-    query_result = session.query(QueryResult).filter(
-        QueryResult.job_id == result.job_id
-    ).first()
+    query_result = (
+        session.query(QueryResult).filter(QueryResult.job_id == result.job_id).first()
+    )
 
     if query_result:
         # Update existing record
@@ -85,6 +88,7 @@ def save_query_result(
 
     session.flush()
     return query_result.id
+
 
 def save_data_record(
     session: Session,
@@ -107,11 +111,12 @@ def save_data_record(
         byte_size=byte_size,
         num_of_records=num_of_records,
         decompressed_byte_size=decompressed_byte_size,
-        source=source
+        source=source,
     )
     session.add(dataset)
     session.flush()
     return dataset.id
+
 
 def get_query_results(
     session: Session, query_id: int, page: int = 1, page_size: int = 1000
@@ -133,6 +138,7 @@ def get_query_results(
 
     return results, total
 
+
 def get_query_status(session: Session, query_id: int) -> dict:
     query = session.query(Query).filter(Query.id == query_id).first()
     if not query:
@@ -145,9 +151,7 @@ def get_query_status(session: Session, query_id: int) -> dict:
     )
 
     query_results_count = (
-        session.query(QueryResult)
-        .filter(QueryResult.query_id == query_id)
-        .count()
+        session.query(QueryResult).filter(QueryResult.query_id == query_id).count()
     )
 
     return {
@@ -159,6 +163,7 @@ def get_query_status(session: Session, query_id: int) -> dict:
         "dataset_size": dataset_size,
         "query_results_count": query_results_count,
     }
+
 
 def get_query_detail(session: Session, query_id: int) -> dict:
     query = session.query(Query).filter(Query.id == query_id).first()
