@@ -41,7 +41,7 @@ class QueryJobResult(BaseModel):
 
     job_id: str = Field(alias="jobId")
     error_result: Optional[ErrorResult] = Field(alias="errorResult", default=None)
-    classify_result: list[ClassifyResult] = Field(alias="classifyResult", default=[])
+    batch_classify_result: list[ClassifyResult] = Field(alias="batchClassifyResult", default=[])
 
 
 class QueryResult(BaseModel):
@@ -74,6 +74,7 @@ class RegisterQueryRequest(BaseModel):
     language: str
     query_text: str = Field(alias="queryText")
     model: str
+    user: str
 
 
 class RegisterQueryResponse(BaseModel):

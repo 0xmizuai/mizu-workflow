@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Query as QueryParam
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Annotated
 from app.db.database import (
@@ -9,7 +9,7 @@ from app.db.database import (
     get_query_results,
     get_query_detail,
 )
-from app.auth import get_user, verify_internal_service
+from app.auth import verify_internal_service
 from contextlib import asynccontextmanager
 import uvicorn
 from app.models.service import (
@@ -56,7 +56,7 @@ async def health_check():
 @app.post("/register_query")
 @error_handler
 async def register_query(
-    query: RegisterQueryRequest, owner: Annotated[str, Depends(get_user)]
+    query: RegisterQueryRequest, _: Annotated[bool, Depends(verify_internal_service)]
 ):
     with get_db_session() as session:
         query_id = save_new_query(
@@ -65,7 +65,7 @@ async def register_query(
             language=query.language,
             query_text=query.query_text,
             model=query.model,
-            owner=owner,
+            user=query.user,
         )
         return build_ok_response(RegisterQueryResponse(query_id=query_id))
 
@@ -84,8 +84,9 @@ async def save_query_result_callback(
 @error_handler
 async def get_query_results_endpoint(
     query_id: int,
-    user: Annotated[str, Depends(get_user)],
-    page: int = Query(default=1, ge=1),
+    user: str,
+    _: Annotated[bool, Depends(verify_internal_service)],
+    page: int = QueryParam(default=1, ge=1),
 ):
     with get_db_session() as session:
         # Verify query belongs to publisher
@@ -124,7 +125,9 @@ async def get_query_results_endpoint(
 
 
 @app.get("/queries/{query_id}", response_model=QueryContext)
-async def get_query_context(query_id: int, user: Annotated[str, Depends(get_user)]):
+async def get_query_context(
+    query_id: int, _: Annotated[bool, Depends(verify_internal_service)]
+):
     with get_db_session() as session:
         query = get_query_detail(session, query_id)
         if not query:
@@ -135,7 +138,9 @@ async def get_query_context(query_id: int, user: Annotated[str, Depends(get_user
 
 
 @app.get("/queries", response_model=QueryContext)
-async def get_all_queries(user: Annotated[str, Depends(get_user)]):
+async def get_all_queries(
+    user: str, _: Annotated[bool, Depends(verify_internal_service)]
+):
     with get_db_session() as session:
         queries = get_owned_queries(session, owner=user)
         return build_ok_response(

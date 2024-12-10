@@ -5,8 +5,8 @@ from fastapi import HTTPException
 import os
 from datetime import datetime, timezone
 
-from app.models import Base, Dataset, Query, QueryResult
-from app.models.service import JobResult
+from app.models import Dataset, Query, QueryResult
+from app.models.service import QueryJobResult
 
 # Create engine and session factory
 engine = create_engine(os.environ["POSTGRES_URL"])
@@ -67,17 +67,15 @@ def add_query_result(
 
 def save_query_result(
     session: Session,
-    result: JobResult,
+    result: QueryJobResult,
 ) -> int:
-    # Try to find existing QueryResult
     query_result = (
         session.query(QueryResult).filter(QueryResult.job_id == result.job_id).first()
     )
 
     if query_result:
         # Update existing record
-        query_result.data_id = result.data_id
-        query_result.result = result.classify_result or result.error_result
+        query_result.result = result.batch_classify_result or result.error_result
         query_result.finished_at = datetime.now(timezone.utc)
         query_result.status = "error" if result.error_result else "processed"
     else:
