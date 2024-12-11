@@ -53,12 +53,12 @@ async def get_object_metadata(s3_client, obj: dict) -> dict:
 
 
 async def list_r2_objects(
-    prefix: str = "", 
-    offset: str = "", 
-    end_before: str = ""
+    prefix: str = "", offset: str = "", end_before: str = ""
 ) -> AsyncGenerator[list[dict], None]:
     """Lists objects from R2 bucket and gets their metadata in batches"""
-    logger.info(f"Starting to list objects with prefix: {prefix}, from: {offset}, to: {end_before}")
+    logger.info(
+        f"Starting to list objects with prefix: {prefix}, from: {offset}, to: {end_before}"
+    )
     processed = 0
     errors = 0
 
@@ -83,7 +83,9 @@ async def list_r2_objects(
 
                 # Filter objects that come before end_before
                 if end_before:
-                    contents = [obj for obj in page["Contents"] if obj["Key"] < end_before]
+                    contents = [
+                        obj for obj in page["Contents"] if obj["Key"] < end_before
+                    ]
                     if not contents:  # We've passed our end point
                         logger.info(f"Reached end point: {end_before}")
                         break
@@ -171,7 +173,9 @@ def get_last_processed_key() -> str:
     try:
         with get_db_session() as session:
             result = session.execute(
-                text("SELECT name, data_type, language, md5 FROM datasets ORDER BY id DESC LIMIT 1")
+                text(
+                    "SELECT name, data_type, language, md5 FROM datasets ORDER BY id DESC LIMIT 1"
+                )
             ).fetchone()
 
             if result:
@@ -252,7 +256,7 @@ def update_dataset_stats():
 def sample_datasets(source_db_url: str, sample_size: int = 100000):
     """
     Sample records from source database's datasets table and insert them into the current database.
-    
+
     Args:
         source_db_url (str): The source database connection URL
         sample_size (int): Number of records to sample per dataset/language combination
@@ -260,8 +264,10 @@ def sample_datasets(source_db_url: str, sample_size: int = 100000):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
-    logger.info(f"Starting dataset sampling. Sample size per combination: {sample_size}")
-    
+    logger.info(
+        f"Starting dataset sampling. Sample size per combination: {sample_size}"
+    )
+
     try:
         # Create source database connection
         source_engine = create_engine(source_db_url)
@@ -270,19 +276,22 @@ def sample_datasets(source_db_url: str, sample_size: int = 100000):
 
         # Get distinct dataset/language combinations
         combinations = source_session.execute(
-            text("""
+            text(
+                """
                 SELECT DISTINCT name, language, data_type 
                 FROM datasets
-            """)
+            """
+            )
         ).fetchall()
 
         total_sampled = 0
-        
+
         for combo in combinations:
             try:
                 # Sample records for each combination
                 samples = source_session.execute(
-                    text(f"""
+                    text(
+                        f"""
                         SELECT 
                             name, language, data_type, md5,
                             num_of_records, decompressed_byte_size, byte_size, source
@@ -292,13 +301,14 @@ def sample_datasets(source_db_url: str, sample_size: int = 100000):
                             AND data_type = :data_type
                         ORDER BY RANDOM() 
                         LIMIT :sample_size
-                    """),
+                    """
+                    ),
                     {
                         "name": combo.name,
                         "language": combo.language,
                         "data_type": combo.data_type,
-                        "sample_size": sample_size
-                    }
+                        "sample_size": sample_size,
+                    },
                 ).fetchall()
 
                 # Convert to list of dictionaries
@@ -307,7 +317,7 @@ def sample_datasets(source_db_url: str, sample_size: int = 100000):
                 if records:
                     batch_size = 1000
                     for i in range(0, len(records), batch_size):
-                        batch = records[i:i + batch_size]
+                        batch = records[i : i + batch_size]
                         insert_batch_to_db(batch)
                         total_sampled += len(batch)
                         logger.info(
@@ -338,6 +348,9 @@ def start():
         "--resume", action="store_true", help="Resume from last processed item"
     )
     parser.add_argument(
+        "--start-after", type=str, default="", help="Start after this key"
+    )
+    parser.add_argument(
         "--end-before", type=str, default="", help="End before this key"
     )
     parser.add_argument(
@@ -350,7 +363,10 @@ def start():
         "--source-db", type=str, help="Source database URL for sampling"
     )
     parser.add_argument(
-        "--sample-size", type=int, default=100000, help="Number of records to sample per combination"
+        "--sample-size",
+        type=int,
+        default=100000,
+        help="Number of records to sample per combination",
     )
     args = parser.parse_args()
 
@@ -365,5 +381,7 @@ def start():
         sample_datasets(args.source_db, args.sample_size)
         return
 
-    offset = get_last_processed_key() if args.resume else ""
-    asyncio.run(load_dataset("CC-MAIN-2024-46", "text", offset, args.end_before))
+    if args.resume:
+        start_after = args.start_after or get_last_processed_key() or ""
+        end_before = args.end_before or ""
+    asyncio.run(load_dataset("CC-MAIN-2024-46", "text", start_after, end_before))
