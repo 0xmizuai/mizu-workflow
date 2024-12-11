@@ -117,7 +117,7 @@ async def get_object_metadata(s3_client, obj: dict) -> dict:
 
 
 async def list_r2_objects(
-    prefix: str = "", offset: str = "", end_before: str = ""
+    prefix: str = "", offset: str = ""
 ) -> AsyncGenerator[list[dict], None]:
     """Lists objects from R2 bucket and gets their metadata in batches"""
     logger.info(
@@ -144,16 +144,6 @@ async def list_r2_objects(
                 if "Contents" not in page:
                     logger.warning(f"No contents found for prefix: {prefix}")
                     continue
-
-                # Filter objects that come before end_before
-                if end_before:
-                    contents = [
-                        obj for obj in page["Contents"] if obj["Key"] < end_before
-                    ]
-                    if not contents:  # We've passed our end point
-                        logger.info(f"Reached end point: {end_before}")
-                        break
-                    page["Contents"] = contents
 
                 # Process the entire page directly
                 tasks = [
@@ -208,7 +198,35 @@ def insert_batch_to_db(objects: list[dict]):
         logger.error(f"Error inserting batch into database: {str(e)}")
 
 
-async def load_dataset_for_language(dataset: str, data_type: str, language: str, start_after: str = "", end_before: str = ""):
+def get_last_processed_key(language: str) -> str:
+    """Get the r2_key of the last processed item from the database"""
+    try:
+        with get_db_session() as session:
+            result = session.execute(
+                text(
+                    """
+                    SELECT name, data_type, language, md5 
+                    FROM datasets 
+                    WHERE language = :language 
+                    ORDER BY id DESC 
+                    LIMIT 1
+                    """
+                ).bindparams(language=language)
+            ).fetchone()
+
+            if result:
+                last_key = f"{result[0]}/{result[1]}/{result[2]}/{result[3]}.zz"
+                logger.info(f"Resuming from last processed key: {last_key}")
+                return last_key
+
+            logger.info("No previous progress found, starting from beginning")
+            return ""
+    except Exception as e:
+        logger.error(f"Error getting last processed key: {str(e)}")
+        return ""
+
+
+async def load_dataset_for_language(dataset: str, data_type: str, language: str):
     """Process a single language prefix"""
     try:
         prefix = f"{dataset}/{data_type}/{language}"
@@ -216,7 +234,9 @@ async def load_dataset_for_language(dataset: str, data_type: str, language: str,
 
         logger.info(f"Starting dataset load for {prefix}")
 
-        async for batch_metadata in list_r2_objects(prefix, start_after, end_before):
+#        start_after = get_last_processed_key(language)
+        start_after = ""
+        async for batch_metadata in list_r2_objects(prefix, start_after):
             if batch_metadata:
                 insert_batch_to_db(batch_metadata)
                 total_processed += len(batch_metadata)
@@ -230,13 +250,13 @@ async def load_dataset_for_language(dataset: str, data_type: str, language: str,
         logger.error(f"Error processing language {language}: {str(e)}")
 
 
-async def load_dataset(dataset: str, data_type: str, start_after: str = "", end_before: str = ""):
+async def load_dataset(dataset: str, data_type: str):
     logger.info(
-        f"Loading dataset {dataset} with data type {data_type} with offset {start_after} and end before {end_before}"
+        f"Loading dataset {dataset} with data type {data_type}"
     )
     try:
         tasks = [
-            load_dataset_for_language(dataset, data_type, lang, start_after, end_before)
+            load_dataset_for_language(dataset, data_type, lang)
             for lang in LANGUAGES
         ]
 
@@ -248,28 +268,6 @@ async def load_dataset(dataset: str, data_type: str, start_after: str = "", end_
     except KeyboardInterrupt:
         logger.info("Received interrupt signal. Exiting...")
         raise
-
-
-def get_last_processed_key() -> str:
-    """Get the r2_key of the last processed item from the database"""
-    try:
-        with get_db_session() as session:
-            result = session.execute(
-                text(
-                    "SELECT name, data_type, language, md5 FROM datasets ORDER BY id DESC LIMIT 1"
-                )
-            ).fetchone()
-
-            if result:
-                last_key = f"{result[0]}/{result[1]}/{result[2]}/{result[3]}.zz"
-                logger.info(f"Resuming from last processed key: {last_key}")
-                return last_key
-
-            logger.info("No previous progress found, starting from beginning")
-            return ""
-    except Exception as e:
-        logger.error(f"Error getting last processed key: {str(e)}")
-        return ""
 
 
 def update_dataset_stats():
@@ -427,16 +425,6 @@ def start():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--resume", action="store_true", help="Resume from last processed item"
-    )
-
-    parser.add_argument(
-        "--start-after", type=str, default="", help="Start after this key"
-    )
-    parser.add_argument(
-        "--end-before", type=str, default="", help="End before this key"
-    )
-    parser.add_argument(
         "--stats", action="store_true", help="Update dataset statistics"
     )
     parser.add_argument(
@@ -464,9 +452,4 @@ def start():
         sample_datasets(args.source_db, args.sample_size)
         return
 
-    if args.resume:
-        start_after = get_last_processed_key()
-    else:
-        start_after = args.start_after
-    end_before = args.end_before
-    asyncio.run(load_dataset("CC-MAIN-2024-46", "text", start_after, end_before))
+    asyncio.run(load_dataset("CC-MAIN-2024-46", "text"))
