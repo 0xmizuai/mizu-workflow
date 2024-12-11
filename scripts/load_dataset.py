@@ -117,11 +117,11 @@ async def get_object_metadata(s3_client, obj: dict) -> dict:
 
 
 async def list_r2_objects(
-    prefix: str = "", offset: str = ""
+    prefix: str = "", start_after: str = ""
 ) -> AsyncGenerator[list[dict], None]:
     """Lists objects from R2 bucket and gets their metadata in batches"""
     logger.info(
-        f"Starting to list objects with prefix: {prefix}, from: {offset}, to: {end_before}"
+        f"Starting to list objects with prefix: {prefix}, from: {start_after}"
     )
     processed = 0
     errors = 0
@@ -139,7 +139,7 @@ async def list_r2_objects(
             async for page in paginator.paginate(
                 Bucket=DATASET_BUCKET,
                 Prefix=prefix,
-                StartAfter=offset,
+                StartAfter=start_after,
             ):
                 if "Contents" not in page:
                     logger.warning(f"No contents found for prefix: {prefix}")
@@ -205,10 +205,10 @@ def get_last_processed_key(language: str) -> str:
             result = session.execute(
                 text(
                     """
-                    SELECT name, data_type, language, md5 
-                    FROM datasets 
-                    WHERE language = :language 
-                    ORDER BY id DESC 
+                    SELECT name, data_type, language, md5
+                    FROM datasets
+                    WHERE language = :language
+                    ORDER BY id DESC
                     LIMIT 1
                     """
                 ).bindparams(language=language)
