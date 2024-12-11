@@ -18,6 +18,7 @@ CREATE INDEX idx_datasets_name ON datasets(name);
 CREATE INDEX idx_datasets_language ON datasets(language);
 CREATE INDEX idx_datasets_name_language ON datasets(name, language);
 CREATE INDEX idx_datasets_md5 ON datasets(md5);
+CREATE INDEX idx_datasets_byte_size ON datasets(byte_size);
 CREATE INDEX idx_datasets_created_at ON datasets(created_at);
 
 

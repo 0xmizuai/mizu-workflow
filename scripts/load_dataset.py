@@ -15,6 +15,70 @@ R2_SECRET_KEY = os.getenv("R2_SECRET_KEY")
 
 DATASET_BUCKET = "mizu-cmc"
 
+LANGUAGES = [
+    "ara",
+    "asm",
+    "aym",
+    "aze",
+    "bak",
+    "bel",
+    "ben",
+    "bih",
+    "bis",
+    "bod",
+    "bos",
+    "bre",
+    "bul",
+    "cat",
+    "ceb",
+    "ces",
+    "chr",
+    "cos",
+    "crs",
+    "cym",
+    "dan",
+    "deu",
+    "div",
+    "dzo",
+    "ell",
+    "eng",
+    "epo",
+    "est",
+    "eus",
+    "fao",
+    "fas",
+    "fij",
+    "fin",
+    "fra",
+    "fry",
+    "gla",
+    "gle",
+    "glg",
+    "glv",
+    "got",
+    "grn",
+    "guj",
+    "hat",
+    "hau",
+    "haw",
+    "heb",
+    "hin",
+    "hmn",
+    "hrv",
+    "hun",
+    "hye",
+    "ibo",
+    "iku",
+    "ile",
+    "ina",
+    "ind",
+    "ipk",
+    "isl",
+    "ita",
+    "jav",
+    "jpn"
+]
+
 # Set up logging at the top of the file
 logging.basicConfig(
     level=logging.INFO,
@@ -102,8 +166,9 @@ async def list_r2_objects(
                 processed += len(valid_results)
                 errors += len(results) - len(valid_results)
 
+                last_md5 = valid_results[-1]["md5"] if valid_results else ""
                 logger.info(
-                    f"Processed batch of {len(valid_results)} objects. Total: {processed}, Errors: {errors}"
+                    f"Processed batch of {len(valid_results)} objects. Total: {processed}, Errors: {errors}, Last md5: {last_md5}"
                 )
                 yield valid_results
 
@@ -133,7 +198,7 @@ def insert_batch_to_db(objects: list[dict]):
                     :name, :language, :data_type, :md5,
                     :num_of_records, :decompressed_byte_size, :byte_size, :source
                 ) ON CONFLICT (md5) DO UPDATE SET
-                    byte_size = EXCLUDED.byte_size,
+                    byte_size = EXCLUDED.byte_size
                 """
                 ),
                 objects,
@@ -143,25 +208,42 @@ def insert_batch_to_db(objects: list[dict]):
         logger.error(f"Error inserting batch into database: {str(e)}")
 
 
-async def load_dataset(dataset: str, data_type: str, offset: str = ""):
-    logger.info(
-        f"Loading dataset {dataset} with data type {data_type} with offset {offset}"
-    )
+async def load_dataset_for_language(dataset: str, data_type: str, language: str, start_after: str = "", end_before: str = ""):
+    """Process a single language prefix"""
     try:
-        prefix = f"{dataset}/{data_type}"
+        prefix = f"{dataset}/{data_type}/{language}"
         total_processed = 0
 
         logger.info(f"Starting dataset load for {prefix}")
 
-        async for batch_metadata in list_r2_objects(prefix, offset):
+        async for batch_metadata in list_r2_objects(prefix, start_after, end_before):
             if batch_metadata:
                 insert_batch_to_db(batch_metadata)
                 total_processed += len(batch_metadata)
-                logger.info(f"Total processed: {total_processed}")
+                logger.info(f"Total processed for {language}: {total_processed}")
 
         logger.info(
             f"Completed loading dataset {prefix}. Total processed: {total_processed}"
         )
+
+    except Exception as e:
+        logger.error(f"Error processing language {language}: {str(e)}")
+
+
+async def load_dataset(dataset: str, data_type: str, start_after: str = "", end_before: str = ""):
+    logger.info(
+        f"Loading dataset {dataset} with data type {data_type} with offset {start_after} and end before {end_before}"
+    )
+    try:
+        tasks = [
+            load_dataset_for_language(dataset, data_type, lang, start_after, end_before)
+            for lang in LANGUAGES
+        ]
+
+        # Run all tasks concurrently
+        await asyncio.gather(*tasks)
+
+        logger.info(f"Completed loading all languages for {dataset}/{data_type}")
 
     except KeyboardInterrupt:
         logger.info("Received interrupt signal. Exiting...")
@@ -347,6 +429,7 @@ def start():
     parser.add_argument(
         "--resume", action="store_true", help="Resume from last processed item"
     )
+
     parser.add_argument(
         "--start-after", type=str, default="", help="Start after this key"
     )
@@ -382,6 +465,8 @@ def start():
         return
 
     if args.resume:
-        start_after = args.start_after or get_last_processed_key() or ""
-        end_before = args.end_before or ""
+        start_after = get_last_processed_key()
+    else:
+        start_after = args.start_after
+    end_before = args.end_before
     asyncio.run(load_dataset("CC-MAIN-2024-46", "text", start_after, end_before))
