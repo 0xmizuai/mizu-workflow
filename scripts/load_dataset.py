@@ -27,8 +27,6 @@ logger = logging.getLogger(__name__)
 async def get_object_metadata(s3_client, obj: dict) -> dict:
     """Get metadata for a single object"""
     try:
-        #       head = await s3_client.head_object(Bucket=DATASET_BUCKET, Key=obj["Key"])
-
         # Parse key components
         key_parts = obj["Key"].split("/")
         if len(key_parts) >= 4:
@@ -39,7 +37,6 @@ async def get_object_metadata(s3_client, obj: dict) -> dict:
         else:
             raise Exception(f"Invalid key format: {obj['Key']}")
 
-        #         metadata = head.get("Metadata", {})
         return {
             "name": dataset,
             "language": language,
@@ -56,10 +53,12 @@ async def get_object_metadata(s3_client, obj: dict) -> dict:
 
 
 async def list_r2_objects(
-    prefix: str = "", offset: str = ""
+    prefix: str = "", 
+    offset: str = "", 
+    end_before: str = ""
 ) -> AsyncGenerator[list[dict], None]:
     """Lists objects from R2 bucket and gets their metadata in batches"""
-    logger.info(f"Starting to list objects with prefix: {prefix}")
+    logger.info(f"Starting to list objects with prefix: {prefix}, from: {offset}, to: {end_before}")
     processed = 0
     errors = 0
 
@@ -81,6 +80,14 @@ async def list_r2_objects(
                 if "Contents" not in page:
                     logger.warning(f"No contents found for prefix: {prefix}")
                     continue
+
+                # Filter objects that come before end_before
+                if end_before:
+                    contents = [obj for obj in page["Contents"] if obj["Key"] < end_before]
+                    if not contents:  # We've passed our end point
+                        logger.info(f"Reached end point: {end_before}")
+                        break
+                    page["Contents"] = contents
 
                 # Process the entire page directly
                 tasks = [
@@ -123,7 +130,8 @@ def insert_batch_to_db(objects: list[dict]):
                 ) VALUES (
                     :name, :language, :data_type, :md5,
                     :num_of_records, :decompressed_byte_size, :byte_size, :source
-                ) ON CONFLICT (md5) DO NOTHING
+                ) ON CONFLICT (md5) DO UPDATE SET
+                    byte_size = EXCLUDED.byte_size,
                 """
                 ),
                 objects,
@@ -330,6 +338,9 @@ def start():
         "--resume", action="store_true", help="Resume from last processed item"
     )
     parser.add_argument(
+        "--end-before", type=str, default="", help="End before this key"
+    )
+    parser.add_argument(
         "--stats", action="store_true", help="Update dataset statistics"
     )
     parser.add_argument(
@@ -355,4 +366,4 @@ def start():
         return
 
     offset = get_last_processed_key() if args.resume else ""
-    asyncio.run(load_dataset("CC-MAIN-2024-46", "text", offset))
+    asyncio.run(load_dataset("CC-MAIN-2024-46", "text", offset, args.end_before))
